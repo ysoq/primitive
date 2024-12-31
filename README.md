@@ -157,3 +157,19 @@ Here are more examples from interesting photos found on Flickr.
 ![Example](https://www.michaelfogleman.com/static/primitive/examples/15196426112.200.128.4.5.png)
 ![Example](https://www.michaelfogleman.com/static/primitive/examples/24696847962.png)
 ![Example](https://www.michaelfogleman.com/static/primitive/examples/18276676312.100.128.4.1.png)
+
+
+
+
+
+
+
+包安装
+go mod init primitive
+运行
+go run main.go -i 2.png -o 2-1.jpg  -n 200
+
+
+
+
+
