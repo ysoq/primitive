@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Image</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+
+        .container {
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .form-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 400px;
+        }
+
+        label,
+        .item-title {
+            margin-top: 10px;
+            display: block;
+            color: #666;
+        }
+
+        input[type="file"],
+        input[type="number"],
+        select {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin-top: 20px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button.loading {
+            background-color: #ccc;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        button.loading::after {
+            content: ' Loading...';
+            margin-left: 10px;
+            animation: loading-animation 1s infinite;
+        }
+
+        @keyframes loading-animation {
+            0% {
+                opacity: 0;
+            }
+
+            50% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .img-preview {
+            background: #fff;
+            margin-left: 20px;
+        }
+
+        img {
+            height: 400px;
+            width: 400px;
+            
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="form-container">
+            <h1>抽象画</h1>
+            <form id="uploadForm">
+                <label for="imageInput">选择图片</label>
+                <input type="file" id="imageInput" name="image" oninput="showPreview()" accept="image/*" required>
+                <br><br>
+
+                <label for="stepCountInput">复杂度</label>
+                <input type="number" id="stepCountInput" name="stepCount" value="200" min="1" max="1000" required>
+                <br><br>
+
+                <label for="imageTypeInput">创造类型</label>
+                <select id="imageTypeInput" name="imageType" required>
+                    <option value="png">PNG</option>
+                    <option value="svg">SVG</option>
+                    <option value="gif">GIF</option>
+                </select>
+                <br><br>
+
+                <button type="button" onclick="uploadImage()">开始创作</button>
+            </form>
+        </div>
+        <div>
+            <!-- <p class="item-title"> 原图 </p> -->
+            <div class="img-preview" id="imgPreview">
+            </div>
+            <!-- <p class="item-title"> 抽象图 </p> -->
+            <div id="responseArea" class="img-preview">
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function showPreview() {
+            const imageInput = document.getElementById('imageInput');
+            const preview = document.getElementById('imgPreview');
+
+            if (imageInput.files && imageInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.innerHTML = '<img src="' + e.target.result + '" alt="Image preview">';
+                }
+                reader.readAsDataURL(imageInput.files[0]);
+            } else {
+                preview.innerHTML = '';
+            }
+        }
+
+
+        function uploadImage() {
+            const button = document.querySelector('button');
+            button.classList.add('loading');
+
+            const imageInput = document.getElementById('imageInput');
+            const stepCountInput = document.getElementById('stepCountInput');
+            const imageTypeInput = document.getElementById('imageTypeInput');
+
+            if (imageInput.files.length === 0) {
+                alert('Please select an image to upload.');
+                button.classList.remove('loading');
+                return;
+            }
+
+            const file = imageInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+                const base64String = event.target.result.split(',')[1];
+
+                // Replace '/process' with your actual server endpoint
+                fetch('/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: `image=${encodeURIComponent(base64String)}&stepCount=${stepCountInput.value}&imageType=${imageTypeInput.value}`
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        button.classList.remove('loading');
+
+                        const responseArea = document.getElementById('responseArea');
+                        responseArea.innerHTML = ''; // Clear previous content
+
+                        if (imageTypeInput.value === "gif" || imageTypeInput.value === "png") {
+                            const imgElement = document.createElement('img');
+                            imgElement.src = `data:image/${imageTypeInput.value};base64,${data.data}`;
+                            imgElement.alt = 'Processed Image';
+                            responseArea.appendChild(imgElement);
+                        } else if (imageTypeInput.value === "svg") {
+                            responseArea.innerHTML = data.data;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while uploading the image.');
+                        button.classList.remove('loading');
+                    });
+            };
+
+            reader.onerror = function (error) {
+                console.error('Error reading file:', error);
+                alert('An error occurred while reading the file.');
+                button.classList.remove('loading');
+            };
+
+            reader.readAsDataURL(file);
+        }
+    </script>
+</body>
+
+</html>
