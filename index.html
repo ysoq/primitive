@@ -22,8 +22,24 @@
             background-color: #fff;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            max-width: 500px;
-            width: 100%;
+            width: 1200px;
+        }
+
+        @media screen and (max-width: 600px) {
+            body {
+                background: #fff;
+                align-items: start;
+            }
+
+            .container {
+                box-shadow: none;
+                width: 100%;
+            }
+
+            .img-preview img,
+            .img-preview svg {
+                width: 100% !important; 
+            }
         }
 
         h1 {
@@ -101,14 +117,11 @@
 
         .img-preview {
             margin-top: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
         }
 
         .img-preview img,
         .img-preview svg {
-            width: 100%;
+            width: 400px;
             height: auto;
             border-radius: 4px;
         }
@@ -118,6 +131,7 @@
             display: flex;
             margin: 10px 0;
         }
+
         .radio-label {
             display: flex;
             align-items: center;
@@ -125,20 +139,26 @@
             cursor: pointer;
             margin-right: 10px;
         }
+
         .radio-label input[type="radio"] {
             cursor: pointer;
             display: none;
         }
+
         .radio-label span {
             padding: 5px 10px;
             border: 2px solid #ccc;
             border-radius: 5px;
             transition: background-color 0.3s, border-color 0.3s;
         }
-        .radio-label input[type="radio"]:checked + span {
-            background-color: #007bff; /* 选中的背景色 */
-            color: white; /* 选中的文字色 */
-            border-color: #007bff; /* 选中的边框色 */
+
+        .radio-label input[type="radio"]:checked+span {
+            background-color: #007bff;
+            /* 选中的背景色 */
+            color: white;
+            /* 选中的文字色 */
+            border-color: #007bff;
+            /* 选中的边框色 */
         }
     </style>
 </head>
@@ -149,11 +169,44 @@
         <form id="uploadForm">
             <div class="form-group">
                 <label for="imageInput">选择图片</label>
-                <input type="file" id="imageInput" name="image" oninput="showPreview()" accept="image/*" required>
+                <div class="img-preview">
+                    <div id="imgPreview" onclick="handleUpload()">
+                        <button type="button">选择图片</button>
+                    </div>
+                </div>
+                <input style="display: none;" type="file" id="imageInput" name="image" oninput="showPreview()"
+                    accept="image/*" required>
             </div>
             <div class="form-group">
                 <label for="stepCountInput">复杂度</label>
-                <input type="number" id="stepCountInput" name="stepCount" value="200" min="1" max="1000" required>
+
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="stepCount" value="10" required checked>
+                        <span>10</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="stepCount" value="50" required checked>
+                        <span>50</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="stepCount" value="200">
+                        <span>200</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="stepCount" value="500">
+                        <span>500</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="stepCount" value="1000">
+                        <span>1000</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="stepCount" value="2000">
+                        <span>2000</span>
+                    </label>
+                </div>
+
             </div>
             <div class="form-group">
                 <label for="imageTypeInput">制作类型</label>
@@ -182,9 +235,23 @@
             <div id="imgPreview">
                 <!-- Preview of selected image will appear here -->
             </div>
+            <button type="button" id="saveBtn" style="display: none;" onclick="save()">保存</button>
         </div>
     </div>
     <script>
+
+        function base64ToBlob(base64, mimeType) {
+            var bstr = atob(base64), n = bstr.length, u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], { type: mimeType });
+        }
+
+
+        function handleUpload() {
+            document.getElementById('imageInput').click();
+        }
         function showPreview() {
             const imageInput = document.getElementById('imageInput');
             const preview = document.getElementById('imgPreview');
@@ -194,16 +261,31 @@
                     preview.innerHTML = '<img src="' + e.target.result + '" alt="Image preview">';
                 }
                 reader.readAsDataURL(imageInput.files[0]);
+                document.getElementById('responseArea').innerHTML = '';
+                document.getElementById("saveBtn").style.display = "none";
             } else {
                 preview.innerHTML = '';
             }
         }
+        function save() {
+            const downloadLink = document.createElement('a');
+            downloadLink.href = imageData.data;
+            downloadLink.download = imageData.name;
+            downloadLink.click();
+        }
+        let imageData = {
+            data: null,
+            name: ''
+        };
         function uploadImage() {
             const button = document.querySelector('button');
             button.classList.add('loading');
+            document.getElementById('responseArea').innerHTML = '';
+            document.getElementById("saveBtn").style.display = "none";
+
 
             const imageInput = document.getElementById('imageInput');
-            const stepCountInput = document.getElementById('stepCountInput');
+            const stepCountInput = document.querySelector('input[name="stepCount"]:checked');
             const imageTypeInput = document.querySelector('input[name="imageType"]:checked');
 
             if (imageInput.files.length === 0) {
@@ -227,16 +309,40 @@
                         button.classList.remove('loading');
                         const responseArea = document.getElementById('responseArea');
                         responseArea.innerHTML = ''; // Clear previous content
-
+                        imageData = data.data;
                         if (imageTypeInput.value === "gif" || imageTypeInput.value === "png") {
                             const imgElement = document.createElement('img');
                             imgElement.src = `data:image/${imageTypeInput.value};base64,${data.data}`;
                             imgElement.alt = 'Processed Image';
                             responseArea.appendChild(imgElement);
+
+
                         } else if (imageTypeInput.value === "svg") {
-                            // For SVG, we set the innerHTML to the SVG data string directly
                             responseArea.innerHTML = data.data;
+
                         }
+
+                        if (imageTypeInput.value === "svg") {
+                            const svgBlob = new Blob([data.data], { type: 'image/svg+xml;charset=utf-8' });
+                            imageData = {
+                                data: URL.createObjectURL(svgBlob),
+                                name: `抽象图.svg`
+                            };
+                        } else if (imageTypeInput.value === "gif") {
+                            const blob = base64ToBlob(data.data, { type: 'image/gif' });
+                            imageData = {
+                                data: URL.createObjectURL(blob),
+                                name: `抽象图.gif`
+                            };
+                        } else if (imageTypeInput.value === "png") {
+                            const blob = base64ToBlob(data.data, { type: 'image/png' });
+                            imageData = {
+                                data: URL.createObjectURL(blob),
+                                name: `抽象图.png`
+                            };
+                        }
+
+                        document.getElementById("saveBtn").style.display = "block";
                     })
                     .catch(error => {
                         console.error('Error:', error);
