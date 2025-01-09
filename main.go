@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"image"
@@ -11,9 +12,11 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -67,6 +70,29 @@ func encodeImageToBase64(img image.Image, format string) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+// 定义一个结构体
+type ApiResult struct {
+	Data string `json:"data"`
+}
+
+func getApiResult(value string) string {
+	p := ApiResult{
+		Data: value,
+	}
+
+	// 创建一个字节切片来存储JSON数据
+	jsonData, err := json.Marshal(p)
+	if err != nil {
+		fmt.Println("Error marshaling JSON:", err)
+		return "{}"
+	}
+
+	// 将字节切片转换为字符串（可选，通常用于打印或日志记录）
+	jsonString := string(jsonData)
+
+	return jsonString
 }
 
 func processImage(w http.ResponseWriter, r *http.Request) {
@@ -128,10 +154,10 @@ func processImage(w http.ResponseWriter, r *http.Request) {
 			errorMessage(w, "Failed to encode result image", http.StatusInternalServerError)
 			return
 		}
-		w.Write([]byte(fmt.Sprintf(`{"image": "%s"}`, resultBase64)))
+		w.Write([]byte(getApiResult(resultBase64)))
 	} else if imageType == "svg" {
 		var svg = model.SVG()
-		w.Write([]byte(fmt.Sprintf(`{"image": "%s"}`, svg)))
+		w.Write([]byte(getApiResult(svg)))
 	} else if imageType == "gif" {
 		frames := model.Frames(0.001)
 
@@ -151,7 +177,7 @@ func processImage(w http.ResponseWriter, r *http.Request) {
 		var err error
 		if err = gif.EncodeAll(&buf, &g); err == nil {
 			str := base64.StdEncoding.EncodeToString(buf.Bytes())
-			w.Write([]byte(fmt.Sprintf(`{"image": "%s"}`, str)))
+			w.Write([]byte(getApiResult(str)))
 		} else {
 			w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 		}
@@ -161,7 +187,31 @@ func processImage(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// handlerRoot 是处理根路径的处理器函数
+func handlerRoot(w http.ResponseWriter, r *http.Request) {
+	// 打开 index.html 文件
+	file, err := os.Open("./index.html")
+	if err != nil {
+		http.Error(w, "Could not open index.html", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	// 读取文件内容
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Could not read index.html", http.StatusInternalServerError)
+		return
+	}
+
+	// 设置响应头并写入文件内容
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
 func main() {
+	http.HandleFunc("/", handlerRoot)
 	http.HandleFunc("/process", processImage)
 	port := flag.String("port", "8080", "HTTP server port")
 	flag.Parse()
