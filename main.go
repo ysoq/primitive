@@ -1,207 +1,170 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"flag"
 	"fmt"
+	"image"
+	"image/color/palette"
+	"image/draw"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"log"
 	"math/rand"
-	"os"
-	"path/filepath"
+	"net/http"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	_ "image/gif" // Import to support GIF format
 
 	"github.com/fogleman/primitive/primitive"
 	"github.com/nfnt/resize"
 )
 
 var (
-	Input      string
-	Outputs    flagArray
-	Background string
-	Configs    shapeConfigArray
-	Alpha      int
-	InputSize  int
-	OutputSize int
-	Mode       int
-	Workers    int
-	Nth        int
-	Repeat     int
+	// Global variables can be set via environment variables or a configuration file
+	// in a real-world application.
+	Background = ""
+	Alpha      = 128
+	InputSize  = 256
+	OutputSize = 1024
+	Mode       = 1
+	Workers    = runtime.NumCPU()
+	Nth        = 1
+	Repeat     = 0
 	V, VV      bool
 )
 
-type flagArray []string
-
-func (i *flagArray) String() string {
-	return strings.Join(*i, ", ")
+func errorMessage(w http.ResponseWriter, message string, statusCode int) {
+	http.Error(w, message, statusCode)
 }
 
-func (i *flagArray) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
-
-type shapeConfig struct {
-	Count  int
-	Mode   int
-	Alpha  int
-	Repeat int
-}
-
-type shapeConfigArray []shapeConfig
-
-func (i *shapeConfigArray) String() string {
-	return ""
-}
-
-func (i *shapeConfigArray) Set(value string) error {
-	n, _ := strconv.ParseInt(value, 0, 0)
-	*i = append(*i, shapeConfig{int(n), Mode, Alpha, Repeat})
-	return nil
-}
-
-func init() {
-	flag.StringVar(&Input, "i", "", "input image path")
-	flag.Var(&Outputs, "o", "output image path")
-	flag.Var(&Configs, "n", "number of primitives")
-	flag.StringVar(&Background, "bg", "", "background color (hex)")
-	flag.IntVar(&Alpha, "a", 128, "alpha value")
-	flag.IntVar(&InputSize, "r", 256, "resize large input images to this size")
-	flag.IntVar(&OutputSize, "s", 1024, "output image size")
-	flag.IntVar(&Mode, "m", 1, "0=combo 1=triangle 2=rect 3=ellipse 4=circle 5=rotatedrect 6=beziers 7=rotatedellipse 8=polygon")
-	flag.IntVar(&Workers, "j", 0, "number of parallel workers (default uses all cores)")
-	flag.IntVar(&Nth, "nth", 1, "save every Nth frame (put \"%d\" in path)")
-	flag.IntVar(&Repeat, "rep", 0, "add N extra shapes per iteration with reduced search")
-	flag.BoolVar(&V, "v", false, "verbose")
-	flag.BoolVar(&VV, "vv", false, "very verbose")
-}
-
-func errorMessage(message string) bool {
-	fmt.Fprintln(os.Stderr, message)
-	return false
-}
-
-func check(err error) {
+func decodeBase64Image(base64String string) (image.Image, string, error) {
+	reader := base64.NewDecoder(base64.StdEncoding, strings.NewReader(base64String))
+	img, format, err := image.Decode(reader)
 	if err != nil {
-		log.Fatal(err)
+		return nil, "", err
 	}
+	return img, format, nil
 }
 
-func main() {
-	// parse and validate arguments
-	flag.Parse()
-	ok := true
-	if Input == "" {
-		ok = errorMessage("ERROR: input argument required")
+func encodeImageToBase64(img image.Image, format string) (string, error) {
+	var buf bytes.Buffer
+	var err error
+	switch format {
+	case "jpeg", "jpg":
+		err = jpeg.Encode(&buf, img, nil)
+	case "png":
+		err = png.Encode(&buf, img)
+	default:
+		return "", fmt.Errorf("unsupported image format: %s", format)
 	}
-	if len(Outputs) == 0 {
-		ok = errorMessage("ERROR: output argument required")
+	if err != nil {
+		return "", err
 	}
-	if len(Configs) == 0 {
-		ok = errorMessage("ERROR: number argument required")
-	}
-	if len(Configs) == 1 {
-		Configs[0].Mode = Mode
-		Configs[0].Alpha = Alpha
-		Configs[0].Repeat = Repeat
-	}
-	for _, config := range Configs {
-		if config.Count < 1 {
-			ok = errorMessage("ERROR: number argument must be > 0")
-		}
-	}
-	if !ok {
-		fmt.Println("Usage: primitive [OPTIONS] -i input -o output -n count")
-		flag.PrintDefaults()
-		os.Exit(1)
+	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
+}
+
+func processImage(w http.ResponseWriter, r *http.Request) {
+	// Parse the base64 image from the request body
+	var base64Image string
+	var imageType string = "png"
+	var stepCount int = 200
+	if err := r.ParseForm(); err != nil {
+		errorMessage(w, "Failed to parse form data", http.StatusBadRequest)
+		return
 	}
 
-	// set log level
-	if V {
-		primitive.LogLevel = 1
-	}
-	if VV {
-		primitive.LogLevel = 2
+	base64Image = r.FormValue("image")
+	if base64Image == "" {
+		errorMessage(w, "Missing 'image' parameter", http.StatusBadRequest)
+		return
 	}
 
-	// seed random number generator
-	rand.Seed(time.Now().UTC().UnixNano())
-
-	// determine worker count
-	if Workers < 1 {
-		Workers = runtime.NumCPU()
+	if stepCountStr := r.FormValue("stepCount"); stepCountStr != "" {
+		stepCount, _ = strconv.Atoi(stepCountStr)
+	}
+	if imageTypeStr := r.FormValue("imageType"); imageTypeStr != "" {
+		imageType = imageTypeStr
 	}
 
-	// read input image
-	primitive.Log(1, "reading %s\n", Input)
-	input, err := primitive.LoadImage(Input)
-	check(err)
-
-	// scale down input image if needed
-	size := uint(InputSize)
-	if size > 0 {
-		input = resize.Thumbnail(size, size, input, resize.Bilinear)
+	// Decode the base64 image
+	img, format, err := decodeBase64Image(base64Image)
+	if err != nil {
+		errorMessage(w, "Failed to decode base64 image", http.StatusBadRequest)
+		return
 	}
 
-	// determine background color
+	// Scale down input image if needed
+	if InputSize > 0 {
+		img = resize.Thumbnail(uint(InputSize), uint(InputSize), img, resize.Bilinear)
+	}
+
+	// Determine background color
 	var bg primitive.Color
 	if Background == "" {
-		bg = primitive.MakeColor(primitive.AverageImageColor(input))
+		bg = primitive.MakeColor(primitive.AverageImageColor(img))
 	} else {
 		bg = primitive.MakeHexColor(Background)
 	}
 
-	// run algorithm
-	model := primitive.NewModel(input, bg, OutputSize, Workers)
-	primitive.Log(1, "%d: t=%.3f, score=%.6f\n", 0, 0.0, model.Score)
-	start := time.Now()
-	frame := 0
-	for j, config := range Configs {
-		primitive.Log(1, "count=%d, mode=%d, alpha=%d, repeat=%d\n",
-			config.Count, config.Mode, config.Alpha, config.Repeat)
+	// Run the primitive algorithm
+	model := primitive.NewModel(img, bg, OutputSize, Workers)
+	rand.Seed(time.Now().UTC().UnixNano())
+	for i := 0; i < stepCount; i++ { // Example: run for 1000 iterations
+		model.Step(primitive.ShapeType(Mode), Alpha, Repeat)
+	}
 
-		for i := 0; i < config.Count; i++ {
-			frame++
+	w.Header().Set("Content-Type", "application/json")
 
-			// find optimal shape and add it to the model
-			t := time.Now()
-			n := model.Step(primitive.ShapeType(config.Mode), config.Alpha, config.Repeat)
-			nps := primitive.NumberString(float64(n) / time.Since(t).Seconds())
-			elapsed := time.Since(start).Seconds()
-			primitive.Log(1, "%d: t=%.3f, score=%.6f, n=%d, n/s=%s\n", frame, elapsed, model.Score, n, nps)
+	if imageType == "png" {
+		// Encode the result image to base64
+		resultBase64, err := encodeImageToBase64(model.Context.Image(), format)
+		if err != nil {
+			errorMessage(w, "Failed to encode result image", http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(fmt.Sprintf(`{"image": "%s"}`, resultBase64)))
+	} else if imageType == "svg" {
+		var svg = model.SVG()
+		w.Write([]byte(fmt.Sprintf(`{"image": "%s"}`, svg)))
+	} else if imageType == "gif" {
+		frames := model.Frames(0.001)
 
-			// write output image(s)
-			for _, output := range Outputs {
-				ext := strings.ToLower(filepath.Ext(output))
-				if output == "-" {
-					ext = ".svg"
-				}
-				percent := strings.Contains(output, "%")
-				saveFrames := percent && ext != ".gif"
-				saveFrames = saveFrames && frame%Nth == 0
-				last := j == len(Configs)-1 && i == config.Count-1
-				if saveFrames || last {
-					path := output
-					if percent {
-						path = fmt.Sprintf(output, frame)
-					}
-					primitive.Log(1, "writing %s\n", path)
-					switch ext {
-					default:
-						check(fmt.Errorf("unrecognized file extension: %s", ext))
-					case ".png":
-						check(primitive.SavePNG(path, model.Context.Image()))
-					case ".jpg", ".jpeg":
-						check(primitive.SaveJPG(path, model.Context.Image(), 95))
-					case ".svg":
-						check(primitive.SaveFile(path, model.SVG()))
-					case ".gif":
-						frames := model.Frames(0.001)
-						check(primitive.SaveGIFImageMagick(path, frames, 50, 250))
-					}
-				}
+		g := gif.GIF{}
+		for i, src := range frames {
+			dst := image.NewPaletted(src.Bounds(), palette.Plan9)
+			draw.Draw(dst, dst.Rect, src, image.ZP, draw.Src)
+			g.Image = append(g.Image, dst)
+			if i == len(frames)-1 {
+				g.Delay = append(g.Delay, 250)
+			} else {
+				g.Delay = append(g.Delay, 50)
 			}
 		}
+
+		var buf bytes.Buffer
+		var err error
+		if err = gif.EncodeAll(&buf, &g); err == nil {
+			str := base64.StdEncoding.EncodeToString(buf.Bytes())
+			w.Write([]byte(fmt.Sprintf(`{"image": "%s"}`, str)))
+		} else {
+			w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+		}
 	}
+
+	// Return the result
+
+}
+
+func main() {
+	http.HandleFunc("/process", processImage)
+	port := flag.String("port", "8080", "HTTP server port")
+	flag.Parse()
+	log.Printf("Starting server on port %s", *port)
+	log.Fatal(http.ListenAndServe(":"+*port, nil))
 }
