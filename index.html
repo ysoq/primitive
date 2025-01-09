@@ -4,55 +4,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upload Image</title>
+    <title>抽象画制作</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-
             min-height: 100vh;
             margin: 0;
             background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
         }
 
         .container {
             padding: 20px;
-            display: flex;
-            justify-content: center;
-        }
-
-        .form-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
         }
 
         h1 {
             color: #333;
+            margin-bottom: 20px;
         }
 
-        form {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            width: 400px;
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            padding-right: 20px;
         }
 
         label,
         .item-title {
-            margin-top: 10px;
             display: block;
+            margin-bottom: 5px;
             color: #666;
         }
 
         input[type="file"],
         input[type="number"],
         select {
-            width: calc(100% - 22px);
+            width: 100%;
             padding: 10px;
-            margin-top: 5px;
             border: 1px solid #ccc;
             border-radius: 4px;
         }
@@ -65,11 +63,10 @@
             text-decoration: none;
             display: inline-block;
             font-size: 16px;
-            margin-top: 20px;
-            cursor: pointer;
             border: none;
             border-radius: 4px;
             transition: background-color 0.3s;
+            cursor: pointer;
         }
 
         button:hover {
@@ -83,7 +80,7 @@
         }
 
         button.loading::after {
-            content: ' Loading...';
+            content: ' Loading';
             margin-left: 10px;
             animation: loading-animation 1s infinite;
         }
@@ -103,59 +100,94 @@
         }
 
         .img-preview {
-            background: #fff;
-            margin-left: 20px;
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
-        img {
-            height: 400px;
-            width: 400px;
-            
+        .img-preview img,
+        .img-preview svg {
+            width: 100%;
+            height: auto;
             border-radius: 4px;
+        }
+
+        /* 美化单选按钮的样式 */
+        .radio-group {
+            display: flex;
+            margin: 10px 0;
+        }
+        .radio-label {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .radio-label input[type="radio"] {
+            cursor: pointer;
+            display: none;
+        }
+        .radio-label span {
+            padding: 5px 10px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+        .radio-label input[type="radio"]:checked + span {
+            background-color: #007bff; /* 选中的背景色 */
+            color: white; /* 选中的文字色 */
+            border-color: #007bff; /* 选中的边框色 */
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <div class="form-container">
-            <h1>抽象画</h1>
-            <form id="uploadForm">
+        <h1>抽象画</h1>
+        <form id="uploadForm">
+            <div class="form-group">
                 <label for="imageInput">选择图片</label>
                 <input type="file" id="imageInput" name="image" oninput="showPreview()" accept="image/*" required>
-                <br><br>
-
+            </div>
+            <div class="form-group">
                 <label for="stepCountInput">复杂度</label>
                 <input type="number" id="stepCountInput" name="stepCount" value="200" min="1" max="1000" required>
-                <br><br>
-
-                <label for="imageTypeInput">创造类型</label>
-                <select id="imageTypeInput" name="imageType" required>
-                    <option value="png">PNG</option>
-                    <option value="svg">SVG</option>
-                    <option value="gif">GIF</option>
-                </select>
-                <br><br>
-
-                <button type="button" onclick="uploadImage()">开始创作</button>
-            </form>
-        </div>
-        <div>
-            <!-- <p class="item-title"> 原图 </p> -->
-            <div class="img-preview" id="imgPreview">
             </div>
-            <!-- <p class="item-title"> 抽象图 </p> -->
-            <div id="responseArea" class="img-preview">
+            <div class="form-group">
+                <label for="imageTypeInput">制作类型</label>
+
+                <div class="radio-group">
+                    <label class="radio-label">
+                        <input type="radio" name="imageType" value="png" required checked>
+                        <span>PNG</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="imageType" value="svg">
+                        <span>SVG</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="imageType" value="gif">
+                        <span>GIF</span>
+                    </label>
+                </div>
+            </div>
+            <button type="button" onclick="uploadImage()">开始制作</button>
+        </form>
+        <div class="img-preview">
+            <div id="responseArea">
+                <!-- Result of abstract art creation will appear here -->
+            </div>
+            <div id="imgPreview">
+                <!-- Preview of selected image will appear here -->
             </div>
         </div>
-
     </div>
-
     <script>
         function showPreview() {
             const imageInput = document.getElementById('imageInput');
             const preview = document.getElementById('imgPreview');
-
             if (imageInput.files && imageInput.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function (e) {
@@ -166,15 +198,13 @@
                 preview.innerHTML = '';
             }
         }
-
-
         function uploadImage() {
             const button = document.querySelector('button');
             button.classList.add('loading');
 
             const imageInput = document.getElementById('imageInput');
             const stepCountInput = document.getElementById('stepCountInput');
-            const imageTypeInput = document.getElementById('imageTypeInput');
+            const imageTypeInput = document.querySelector('input[name="imageType"]:checked');
 
             if (imageInput.files.length === 0) {
                 alert('Please select an image to upload.');
@@ -184,22 +214,17 @@
 
             const file = imageInput.files[0];
             const reader = new FileReader();
-
             reader.onload = function (event) {
                 const base64String = event.target.result.split(',')[1];
-
                 // Replace '/process' with your actual server endpoint
                 fetch('/process', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `image=${encodeURIComponent(base64String)}&stepCount=${stepCountInput.value}&imageType=${imageTypeInput.value}`
                 })
                     .then(response => response.json())
                     .then(data => {
                         button.classList.remove('loading');
-
                         const responseArea = document.getElementById('responseArea');
                         responseArea.innerHTML = ''; // Clear previous content
 
@@ -209,6 +234,7 @@
                             imgElement.alt = 'Processed Image';
                             responseArea.appendChild(imgElement);
                         } else if (imageTypeInput.value === "svg") {
+                            // For SVG, we set the innerHTML to the SVG data string directly
                             responseArea.innerHTML = data.data;
                         }
                     })
@@ -218,13 +244,11 @@
                         button.classList.remove('loading');
                     });
             };
-
             reader.onerror = function (error) {
                 console.error('Error reading file:', error);
                 alert('An error occurred while reading the file.');
                 button.classList.remove('loading');
             };
-
             reader.readAsDataURL(file);
         }
     </script>
